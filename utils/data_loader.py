@@ -4,11 +4,12 @@ import numpy as np
 import os
 
 class MarioLevelDataset(Dataset):
-    def __init__(self, data_dir, transform=None, target_width=256, target_height=14):
+    def __init__(self, data_dir, transform=None, target_width=368, target_height=13, num_conditions=10):
         self.data_dir = data_dir
         self.transform = transform
         self.target_width = target_width
         self.target_height = target_height
+        self.num_conditions = num_conditions
         self.levels = []
         self.conditions = []
         
@@ -32,9 +33,10 @@ class MarioLevelDataset(Dataset):
             level_data = self._load_level(os.path.join(data_dir, file))
             self.levels.append(level_data)
             
-            # Extract condition from filename
+            # Extract condition from filename and ensure it's within bounds
             try:
                 condition = int(file.split('_')[1].split('.')[0])
+                condition = condition % self.num_conditions
             except:
                 condition = 0
             self.conditions.append(condition)
@@ -47,17 +49,13 @@ class MarioLevelDataset(Dataset):
         # Remove any empty lines and whitespace
         lines = [line.strip() for line in lines if line.strip()]
         
-        # Get dimensions of the original level
-        height = len(lines)
-        width = len(lines[0])
-        
         # Create numpy array with target dimensions
         level = np.zeros((self.target_height, self.target_width), dtype=np.float32)
         
         # Convert characters to numerical values with padding
-        for i in range(min(height, self.target_height)):
+        for i in range(min(len(lines), self.target_height)):
             line = lines[i]
-            for j in range(min(width, self.target_width)):
+            for j in range(min(len(line), self.target_width)):
                 level[i][j] = self.tile_mapping.get(line[j], 0)
         
         # Normalize the values to [-1, 1] range
@@ -76,8 +74,5 @@ class MarioLevelDataset(Dataset):
         
         if self.transform:
             level = self.transform(level)
-        
-        # Convert to torch tensor if not already
-        level = torch.FloatTensor(level)
         
         return level, condition
