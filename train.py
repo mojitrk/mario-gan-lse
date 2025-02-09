@@ -12,7 +12,7 @@ import os
 latent_dim = 100
 num_conditions = 10  # Number of different level types/conditions
 num_epochs = 5
-batch_size = 64
+batch_size = 32
 lr = 0.0002
 beta1 = 0.5
 
@@ -43,7 +43,12 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-dataset = MarioLevelDataset('data/mario', transform=transform)
+# Example usage
+dataset = MarioLevelDataset(
+    data_dir='data/mario',
+    target_width=256,  # Adjust this based on your longest level
+    target_height=14   # Standard Mario level height
+)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 # Training loop

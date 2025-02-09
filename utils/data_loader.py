@@ -4,22 +4,68 @@ import numpy as np
 import os
 
 class MarioLevelDataset(Dataset):
-    def __init__(self, data_dir, transform=None):
+    def __init__(self, data_dir, transform=None, target_width=256, target_height=14):
         self.data_dir = data_dir
         self.transform = transform
+        self.target_width = target_width
+        self.target_height = target_height
         self.levels = []
         self.conditions = []
         
-        # Load level data from files
-        # Implement loading logic for your specific data format
-        # This is a placeholder - modify according to your data structure
-        level_files = os.listdir(data_dir)
+        # Define tile mapping (VGLC format to numerical values)
+        self.tile_mapping = {
+            '-': 0,  # Empty space
+            '#': 1,  # Solid block
+            '?': 3,  # Question block
+            'e': 4,  # Enemy
+            'p': 5,  # Pipe body left
+            'P': 6,  # Pipe body right
+            'c': 7,  # Something idk
+            'B': 2   # Platform block
+        }
+        
+        # Load level data from text files
+        level_files = [f for f in os.listdir(data_dir) if f.endswith('.txt')]
+        
         for file in level_files:
-            level_data = np.load(os.path.join(data_dir, file))
+            # Load the level
+            level_data = self._load_level(os.path.join(data_dir, file))
             self.levels.append(level_data)
-            # Extract condition from filename or level properties
-            condition = int(file.split('_')[1])  # Example condition extraction
+            
+            # Extract condition from filename
+            try:
+                condition = int(file.split('_')[1].split('.')[0])
+            except:
+                condition = 0
             self.conditions.append(condition)
+
+    def _load_level(self, filepath):
+        """Load a level from a text file and convert it to a numeric array with padding."""
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+        
+        # Remove any empty lines and whitespace
+        lines = [line.strip() for line in lines if line.strip()]
+        
+        # Get dimensions of the original level
+        height = len(lines)
+        width = len(lines[0])
+        
+        # Create numpy array with target dimensions
+        level = np.zeros((self.target_height, self.target_width), dtype=np.float32)
+        
+        # Convert characters to numerical values with padding
+        for i in range(min(height, self.target_height)):
+            line = lines[i]
+            for j in range(min(width, self.target_width)):
+                level[i][j] = self.tile_mapping.get(line[j], 0)
+        
+        # Normalize the values to [-1, 1] range
+        level = (level / (len(self.tile_mapping) - 1)) * 2 - 1
+        
+        # Reshape to (1, H, W) for channel dimension
+        level = level.reshape(1, self.target_height, self.target_width)
+        return level
 
     def __len__(self):
         return len(self.levels)
@@ -30,5 +76,8 @@ class MarioLevelDataset(Dataset):
         
         if self.transform:
             level = self.transform(level)
-            
+        
+        # Convert to torch tensor if not already
+        level = torch.FloatTensor(level)
+        
         return level, condition
