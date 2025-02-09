@@ -9,14 +9,13 @@ import numpy as np
 # Tile Mapping for Super Mario Bros. 2 (VGLC)
 ###############################################
 tile_to_idx = {
-    'X': 0,  # Solid block or wall
-    '-': 1,  # Empty space (passable)
-    '?': 2,  # Question block (active)
-    'E': 3,  # Enemy (e.g. Goomba)
-    'M': 4,  # Mushroom (power-up)
-    'P': 5,  # P-Switch (interactive element)
-    'B': 6,  # Breakable block
-    'O': 7   # Pipe (all parts)
+    '#': 0,  # solid block/wall (e.g., ground)
+    'B': 1, #block in air
+    '-': 2,  # empty space
+    '?': 3,  # question block
+    'E': 4,  # enemy tile
+    'P': 5, #pipe tile
+    # ... add additional tiles as defined in VGLC for SMB2
 }
 idx_to_tile = {v: k for k, v in tile_to_idx.items()}
 
@@ -227,7 +226,7 @@ if __name__ == '__main__':
     discriminator = Discriminator(condition_dim, input_shape=input_shape).to(device)
     
     # Create the dataset using the actual MarioLevelDataset (replace 'path/to/levels' with your directory)
-    dataset = MarioLevelDataset(level_dir="path/to/levels")
+    dataset = MarioLevelDataset(level_dir="VGLC\\Super Mario Bros 2\\Processed\\WithEnemies")
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     
     # Start training
