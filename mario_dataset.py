@@ -7,7 +7,7 @@ from parse_level import parse_level
 class MarioLevelDataset(Dataset):
     def __init__(self, levels_dir, transform=None):
         # Find all text files in the provided directory
-        self.level_files = glob.glob(levels_dir + "\*.txt")
+        self.level_files = glob.glob(levels_dir + "\\*.txt")
         #print(self.level_files)
         self.transform = transform
 
@@ -29,6 +29,6 @@ class MarioLevelDataset(Dataset):
 
 # To test:
 if __name__ == "__main__":
-    dataset = MarioLevelDataset("VGLC\\Super Mario Bros 2\\Processed\WithEnemies")
+    dataset = MarioLevelDataset("VGLC\\Super Mario Bros 2\\Processed\\WithEnemies")
     sample = dataset[0]
     print(sample['level'].shape, sample['condition'])
