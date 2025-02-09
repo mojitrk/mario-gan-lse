@@ -1,5 +1,5 @@
 import numpy as np
-from tile_mapping import tile_to_idx
+from old.tile_mapping import tile_to_idx
 
 import sys
 np.set_printoptions(threshold=sys.maxsize)

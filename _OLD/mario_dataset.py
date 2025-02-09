@@ -2,7 +2,7 @@
 import torch
 from torch.utils.data import Dataset
 import glob
-from parse_level import parse_level
+from old.parse_level import parse_level
 
 class MarioLevelDataset(Dataset):
     def __init__(self, levels_dir, transform=None):
