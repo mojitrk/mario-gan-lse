@@ -34,7 +34,7 @@ def parse_level(file_path, pad_value=1):
     level_array = np.full((height, width), fill_value=pad_value, dtype=np.int64)
     for i, line in enumerate(lines):
         for j, char in enumerate(line):
-            level_array[i, j] = tile_to_idx.get(char, pad_value)
+            level_array[i][j] = tile_to_idx.get(char, pad_value)
     return level_array
 
 ###############################################
@@ -55,10 +55,10 @@ class MarioLevelDataset(Dataset):
 
     def __getitem__(self, idx):
         level = parse_level(self.level_files[idx])
-        # Convert the level (2D numpy array) to a tensor and add channel dimension: (1, H, W)
+        # Convert level (2D numpy array) to tensor and add a channel dimension: (1, H, W)
         level_tensor = torch.tensor(level, dtype=torch.long).unsqueeze(0)
-        # Ensure condition is a tensor of shape (1,)
-        condition = torch.tensor([1.0], dtype=torch.float).view(1)
+        # Create a condition tensor and ensure its shape is (1,)
+        condition = torch.tensor(1.0, dtype=torch.float).unsqueeze(0)
         sample = {'level': level_tensor, 'condition': condition}
         if self.transform:
             sample = self.transform(sample)
@@ -70,11 +70,18 @@ class MarioLevelDataset(Dataset):
 def custom_collate_fn(batch):
     """
     Pads each level tensor in the batch to the maximum height and width,
-    and stacks them along with their conditions.
+    and stacks them along with their condition tensors.
     """
     levels = [sample['level'] for sample in batch]
+    conditions = []
     # Ensure each condition has shape (1,)
-    conditions = [sample['condition'].view(1) for sample in batch]
+    for sample in batch:
+        cond = sample['condition']
+        if cond.dim() == 0:
+            cond = cond.unsqueeze(0)
+        else:
+            cond = cond.view(1)
+        conditions.append(cond)
     
     # Determine maximum height and width among level tensors
     max_height = max(level.size(1) for level in levels)
@@ -105,7 +112,7 @@ class Generator(nn.Module):
             noise_dim (int): Dimension of the latent noise vector.
             condition_dim (int): Dimension of the condition vector.
             output_shape (tuple): Desired output shape (channels, height, width),
-                                  e.g. (1, 15, 319) after padding.
+                                  e.g., (1, 15, 319) after padding.
         """
         super(Generator, self).__init__()
         self.noise_dim = noise_dim
@@ -136,11 +143,10 @@ class Discriminator(nn.Module):
         Args:
             condition_dim (int): Dimension of the condition vector.
             input_shape (tuple): Shape of the level tensor (channels, height, width)
-                                 after padding, e.g. (1, 15, 319).
+                                 after padding, e.g., (1, 15, 319).
         """
         super(Discriminator, self).__init__()
         self.input_shape = input_shape
-        # Calculate flattened dimension: (channels * height * width) + condition_dim
         flattened_dim = input_shape[0] * input_shape[1] * input_shape[2] + condition_dim
 
         self.fc = nn.Sequential(
@@ -149,12 +155,14 @@ class Discriminator(nn.Module):
             nn.Linear(512, 256),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(256, 1),
-            nn.Sigmoid()  # Output a probability between 0 and 1.
+            nn.Sigmoid()  # Output probability between 0 and 1.
         )
 
     def forward(self, level, condition):
         batch_size = level.size(0)
         x = level.view(batch_size, -1)
+        # Ensure condition has shape (batch_size, 1)
+        condition = condition.view(batch_size, 1)
         x = torch.cat([x, condition], dim=1)
         validity = self.fc(x)
         return validity
@@ -164,19 +172,19 @@ class Discriminator(nn.Module):
 ###############################################
 def postprocess_level(gen_tensor, num_tile_types, idx_to_tile):
     """
-    Converts the generator output tensor to a text representation of the level.
+    Converts generator output (values in [-1,1]) to a text representation of the level.
     
     Args:
-        gen_tensor (torch.Tensor): Generator output tensor of shape (batch, 1, H, W) with values in [-1, 1].
+        gen_tensor (torch.Tensor): Tensor from generator, shape (batch, 1, H, W).
         num_tile_types (int): Number of tile types.
-        idx_to_tile (dict): Mapping from integer indices to tile symbols.
+        idx_to_tile (dict): Mapping from indices to tile symbols.
         
     Returns:
         str: Text representation of the first generated level.
     """
     sample = gen_tensor[0].squeeze(0)  # shape: (H, W)
     sample_np = sample.cpu().detach().numpy()
-    # Map [-1, 1] to [0, num_tile_types - 1]
+    # Map [-1,1] to [0, num_tile_types - 1]
     discrete = np.rint((sample_np + 1) * ((num_tile_types - 1) / 2)).astype(int)
     level_text = ""
     for row in discrete:
@@ -200,6 +208,9 @@ def train(generator, discriminator, dataloader, num_epochs, device, noise_dim, c
             real_levels = sample['level'].to(device).float()
             conditions = sample['condition'].to(device).float()
             batch_size = real_levels.size(0)
+            
+            # Ensure conditions has shape (batch_size, 1)
+            conditions = conditions.view(batch_size, 1)
             
             valid = torch.ones(batch_size, 1, device=device)
             fake = torch.zeros(batch_size, 1, device=device)
@@ -239,8 +250,7 @@ if __name__ == '__main__':
     # Hyperparameters
     noise_dim = 100
     condition_dim = 1
-    # For the discriminator instantiation, we use a fixed size that should cover your padded levels.
-    # For example, if the maximum level size in your dataset is (1, 15, 319), then:
+    # Define the fixed padded level size for your dataset. For example, if the maximum level size is (1, 15, 319):
     input_shape = (1, 15, 319)
     num_epochs = 5   # Increase for real training
     batch_size = 16
@@ -249,8 +259,8 @@ if __name__ == '__main__':
     generator = Generator(noise_dim, condition_dim, output_shape=input_shape).to(device)
     discriminator = Discriminator(condition_dim, input_shape=input_shape).to(device)
     
-    # Create the dataset and DataLoader using the actual MarioLevelDataset and custom collate function.
-    # Replace "path/to/levels" with the actual directory containing your level text files.
+    # Create dataset and DataLoader using MarioLevelDataset and the custom collate function.
+    # Replace "path/to/levels" with the actual path to your level text files.
     dataset = MarioLevelDataset(level_dir="VGLC\\Super Mario Bros 2\\Processed\\WithEnemies")
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
     
@@ -266,7 +276,7 @@ if __name__ == '__main__':
         sample_condition = torch.ones(1, condition_dim, device=device)
         gen_level = generator(sample_noise, sample_condition)
     
-    # Postprocess the generator output to obtain a text representation.
+    # Postprocess generator output into text representation.
     level_text = postprocess_level(gen_level, num_tile_types=len(tile_to_idx), idx_to_tile=idx_to_tile)
     print("Generated Level:")
     print(level_text)
