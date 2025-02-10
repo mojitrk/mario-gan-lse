@@ -26,7 +26,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Create directories for checkpoints and samples
 os.makedirs('checkpoints', exist_ok=True)
-os.makedirs('samples', exist_ok=True)
+#os.makedirs('samples', exist_ok=True)
 
 # Initialize TensorBoard
 writer = SummaryWriter('runs/mario_gan')
