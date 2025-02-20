@@ -15,7 +15,7 @@ screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Mario Level Viewer")
 clock = pygame.time.Clock()
 
-def view_levels(level_dir='generated_levels'):
+def view_levels(level_dir='data/mario'):
     """Interactive level viewer"""
     # Get list of level files
     level_files = [f for f in os.listdir(level_dir) if f.endswith('.txt')]

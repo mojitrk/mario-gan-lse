@@ -1,37 +1,44 @@
 import numpy as np
 
-def enforce_level_constraints(level_data):
-    """Enforce basic level design constraints."""
-    height, width = level_data.shape
+def convert_to_level(tensor_level, tile_mapping):
+    """Convert tensor level to text representation"""
+    # Threshold the values and convert to integers
+    level_array = (tensor_level > 0.5).squeeze()
+    # Convert float values to binary (0 or 1)
+    level_array = level_array.astype(np.int32)
     
-    # Ensure ground level exists
-    level_data[-1, :] = 1  # Set bottom row to solid blocks
-    
-    # Ensure no floating enemies
-    for y in range(height - 1):
-        for x in range(width):
-            if level_data[y, x] == 4:  # Enemy tile
-                if level_data[y + 1, x] == 0:  # If empty space below
-                    level_data[y + 1, x] = 2  # Place a platform
-    
-    return level_data
+    level_str = []
+    for row in level_array:
+        # Convert each value to corresponding tile
+        row_str = ''.join(tile_mapping[int(val)] for val in row.flatten())
+        level_str.append(row_str)
+    return '\n'.join(level_str)
 
-def convert_to_level(generated_data, tile_mapping_reverse):
-    """Convert generated data to proper level format."""
-    # Denormalize from [-1, 1] to [0, max_tile]
-    max_tile = len(tile_mapping_reverse) - 1
-    level_data = (generated_data.squeeze() + 1) * max_tile / 2
+def preprocess_gan_output(raw_output):
+    """Convert raw GAN output to tile indices"""
+    # Normalize to [-1, 1] if not already
+    if raw_output.min() < -1 or raw_output.max() > 1:
+        raw_output = 2 * (raw_output - raw_output.min()) / (raw_output.max() - raw_output.min()) - 1
     
-    # Round to nearest tile index and clip to valid range
-    level_data = np.clip(np.round(level_data), 0, max_tile).astype(int)
+    # Convert to tile indices (0-7)
+    # Ensure most values map to sky (0)
+    processed = np.zeros_like(raw_output)
     
-    # Apply level design constraints
-    level_data = enforce_level_constraints(level_data)
+    # Define thresholds to favor sky tiles (0)
+    thresholds = [
+        (-1.0, -0.7, 0),  # Sky (most common)
+        (-0.7, -0.5, 1),  # Ground
+        (-0.5, -0.3, 2),  # Platform
+        (-0.3, -0.1, 3),  # Question blocks
+        (-0.1, 0.1, 4),   # Enemies (rare)
+        (0.1, 0.3, 5),    # Pipe left
+        (0.3, 0.5, 6),    # Pipe right
+        (0.5, 1.0, 7),    # Coins
+    ]
     
-    # Convert to text representation
-    level_txt = []
-    for row in level_data:
-        level_row = ''.join(tile_mapping_reverse[tile] for tile in row)
-        level_txt.append(level_row)
+    # Apply thresholds
+    for low, high, tile_id in thresholds:
+        mask = (raw_output > low) & (raw_output <= high)
+        processed[mask] = tile_id
     
-    return '\n'.join(level_txt)
+    return processed.astype(int)

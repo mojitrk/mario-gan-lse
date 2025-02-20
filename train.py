@@ -12,21 +12,21 @@ import numpy as np
 from utils.level_converter import convert_to_level
 
 # Hyperparameters
-latent_dim = 100
-num_conditions = 10
-num_epochs = 1000
-batch_size = 32  # Reduced batch size for better stability
-lr = 0.0001      # Reduced learning rate
-beta1 = 0.5
-target_height = 13
-target_width = 368
+latent_dim = 128          # Increased for more expressive generation
+num_conditions = 10       # Matches level types
+num_epochs = 5000         # Balanced for convergence
+batch_size = 16          # Small batch for stability
+lr = 0.0002             # Standard DCGAN learning rate
+beta1 = 0.5             # GAN stability parameter
+beta2 = 0.999           # Adam optimizer parameter
+target_height = 13      # Mario level height
+target_width = 368      # Mario level width
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Create directories for checkpoints and samples
+# Create directories for checkpoints
 os.makedirs('checkpoints', exist_ok=True)
-#os.makedirs('samples', exist_ok=True)
 
 # Initialize TensorBoard
 writer = SummaryWriter('runs/mario_gan')
@@ -38,9 +38,17 @@ discriminator = Discriminator(num_conditions).to(device)
 # Loss function
 criterion = nn.BCELoss()
 
-# Optimizers
-g_optimizer = optim.Adam(generator.parameters(), lr=lr, betas=(beta1, 0.999))
-d_optimizer = optim.Adam(discriminator.parameters(), lr=lr, betas=(beta1, 0.999))
+# Optimizers with updated parameters
+g_optimizer = optim.Adam(generator.parameters(), lr=lr, betas=(beta1, beta2))
+d_optimizer = optim.Adam(discriminator.parameters(), lr=lr, betas=(beta1, beta2))
+
+# Learning rate scheduling
+lr_scheduler_g = torch.optim.lr_scheduler.ExponentialLR(g_optimizer, gamma=0.995)
+lr_scheduler_d = torch.optim.lr_scheduler.ExponentialLR(d_optimizer, gamma=0.995)
+
+# Add gradient clipping
+torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=1.0)
+torch.nn.utils.clip_grad_norm_(discriminator.parameters(), max_norm=1.0)
 
 # Load data
 dataset = MarioLevelDataset(
@@ -51,16 +59,7 @@ dataset = MarioLevelDataset(
 )
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-# Load data
-dataset = MarioLevelDataset(
-    data_dir='data/mario',
-    target_width=target_width,
-    target_height=target_height,
-    num_conditions=num_conditions
-)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-# Create reverse mapping for level conversion (use TILE_MAPPING_REVERSE we created)
+# Create reverse mapping for level conversion
 TILE_MAPPING_REVERSE = {v: k for k, v in dataset.tile_mapping.items()}
 
 # Debug print to verify conditions
@@ -108,6 +107,10 @@ for epoch in range(num_epochs):
         g_loss.backward()
         g_optimizer.step()
 
+        # Step the learning rate schedulers
+        lr_scheduler_g.step()
+        lr_scheduler_d.step()
+
         # Log to TensorBoard every 100 iterations
         if i % 100 == 0:
             # Generate fixed samples for consistent tracking
@@ -127,6 +130,8 @@ for epoch in range(num_epochs):
             writer.add_scalar('Metrics/Diversity', diversity, epoch * len(dataloader) + i)
             writer.add_scalar('Metrics/D(x)', d_x, epoch * len(dataloader) + i)
             writer.add_scalar('Metrics/D(G(z))', d_g_z, epoch * len(dataloader) + i)
+            writer.add_scalar('Learning_Rate/Generator', lr_scheduler_g.get_last_lr()[0], epoch)
+            writer.add_scalar('Learning_Rate/Discriminator', lr_scheduler_d.get_last_lr()[0], epoch)
             
             # Log generator gradients and weights
             for name, param in generator.named_parameters():
@@ -154,14 +159,16 @@ for epoch in range(num_epochs):
                   f'D(x): {d_x:.4f} D(G(z)): {d_g_z:.4f} '
                   f'Diversity: {diversity:.4f}')
 
-    # Save models every 100 epochs
-    if (epoch + 1) % 100 == 0:
+    # Save models every 50 epochs
+    if (epoch + 1) % 1000 == 0:
         torch.save({
             'epoch': epoch,
             'generator_state_dict': generator.state_dict(),
             'discriminator_state_dict': discriminator.state_dict(),
             'g_optimizer_state_dict': g_optimizer.state_dict(),
             'd_optimizer_state_dict': d_optimizer.state_dict(),
+            'g_scheduler_state_dict': lr_scheduler_g.state_dict(),
+            'd_scheduler_state_dict': lr_scheduler_d.state_dict(),
             'g_loss': g_loss.item(),
             'd_loss': d_loss.item(),
         }, f'checkpoints/model_epoch_{epoch+1}.pth')
